@@ -2,11 +2,12 @@ from pathlib import Path
 import secrets
 import sqlite3
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "urls.db"
@@ -43,7 +44,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 class URLCreate(BaseModel):
-    url: HttpUrl
+    url: str
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -53,7 +54,18 @@ def index() -> HTMLResponse:
 
 @app.post("/api/urls")
 def create_url(payload: URLCreate, request: Request):
-    original_url = str(payload.url)
+    original_url = payload.url.strip()
+    if not original_url:
+        raise HTTPException(status_code=422, detail="URL을 입력해주세요.")
+
+    normalized_url = original_url.lower()
+    if not (normalized_url.startswith("http://") or normalized_url.startswith("https://")):
+        raise HTTPException(status_code=422, detail="http:// 또는 https://로 시작하는 URL을 입력해주세요.")
+
+    parsed_url = urlparse(original_url)
+    if not parsed_url.netloc:
+        raise HTTPException(status_code=422, detail="http:// 또는 https://로 시작하는 URL을 입력해주세요.")
+
     with get_connection() as conn:
         for _ in range(10):
             code = secrets.token_urlsafe(5).replace("-", "").replace("_", "")[:7]

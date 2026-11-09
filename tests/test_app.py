@@ -19,3 +19,19 @@ def test_invalid_url_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr("app.main.DB_PATH", tmp_path / "test.db")
     with TestClient(app) as client:
         assert client.post("/api/urls", json={"url": "not-a-url"}).status_code == 422
+
+
+def test_empty_url_is_rejected_with_message(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.main.DB_PATH", tmp_path / "test.db")
+    with TestClient(app) as client:
+        response = client.post("/api/urls", json={"url": "   "})
+        assert response.status_code == 422
+        assert response.json()["detail"] == "URL을 입력해주세요."
+
+
+def test_url_without_http_scheme_is_rejected_with_message(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.main.DB_PATH", tmp_path / "test.db")
+    with TestClient(app) as client:
+        response = client.post("/api/urls", json={"url": "example.com"})
+        assert response.status_code == 422
+        assert response.json()["detail"] == "http:// 또는 https://로 시작하는 URL을 입력해주세요."
