@@ -113,10 +113,10 @@ jobs:
           $ErrorActionPreference = 'Stop'
 
           function Invoke-Docker {
-            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
-            & docker @Arguments
+            param([Parameter(Mandatory = $true)][string[]]$DockerArguments)
+            & docker @DockerArguments
             if ($LASTEXITCODE -ne 0) {
-              throw "Docker command failed with exit code $($LASTEXITCODE): docker $($Arguments -join ' ')"
+              throw "Docker command failed with exit code $($LASTEXITCODE): docker $($DockerArguments -join ' ')"
             }
           }
 
@@ -132,10 +132,10 @@ jobs:
           function Restore-PreviousContainer {
             if (Test-ContainerExists "$($env:CONTAINER_NAME)-previous") {
               if (Test-ContainerExists $env:CONTAINER_NAME) {
-                Invoke-Docker rm -f $env:CONTAINER_NAME
+                Invoke-Docker -DockerArguments @('rm', '-f', $env:CONTAINER_NAME)
               }
-              Invoke-Docker rename "$($env:CONTAINER_NAME)-previous" $env:CONTAINER_NAME
-              Invoke-Docker start $env:CONTAINER_NAME
+              Invoke-Docker -DockerArguments @('rename', "$($env:CONTAINER_NAME)-previous", $env:CONTAINER_NAME)
+              Invoke-Docker -DockerArguments @('start', $env:CONTAINER_NAME)
               Write-Host 'Previous LinkFlow container restored.'
             }
           }
@@ -155,13 +155,13 @@ jobs:
             }
 
             try {
-              Invoke-Docker stop $env:CONTAINER_NAME
+              Invoke-Docker -DockerArguments @('stop', $env:CONTAINER_NAME)
               if (-not (Test-Path -LiteralPath $dbFile)) {
-                Invoke-Docker cp "$($env:CONTAINER_NAME):/app/urls.db" $dbFile
+                Invoke-Docker -DockerArguments @('cp', "$($env:CONTAINER_NAME):/app/urls.db", $dbFile)
               }
             } catch {
               if (Test-ContainerExists $env:CONTAINER_NAME) {
-                Invoke-Docker start $env:CONTAINER_NAME
+                Invoke-Docker -DockerArguments @('start', $env:CONTAINER_NAME)
               }
               throw
             }
@@ -173,11 +173,18 @@ jobs:
           $previousRenamed = $false
           try {
             if ($oldExists) {
-              Invoke-Docker rename $env:CONTAINER_NAME "$($env:CONTAINER_NAME)-previous"
+              Invoke-Docker -DockerArguments @('rename', $env:CONTAINER_NAME, "$($env:CONTAINER_NAME)-previous")
               $previousRenamed = $true
             }
 
-            Invoke-Docker run -d --name $env:CONTAINER_NAME --restart unless-stopped -p "$($env:HOST_PORT):8000" -v "$($dbFile):/app/urls.db" $env:IMAGE
+            $runArguments = @(
+              'run', '-d', '--name', $env:CONTAINER_NAME,
+              '--restart', 'unless-stopped',
+              '-p', "$($env:HOST_PORT):8000",
+              '-v', "$($dbFile):/app/urls.db",
+              $env:IMAGE
+            )
+            Invoke-Docker -DockerArguments $runArguments
             $healthy = $false
             for ($i = 0; $i -lt 30; $i++) {
               try {
@@ -188,19 +195,19 @@ jobs:
             }
             if (-not $healthy) { throw 'LinkFlow did not respond with HTTP 200 within 60 seconds.' }
 
-            if ($oldExists) { Invoke-Docker rm "$($env:CONTAINER_NAME)-previous" }
+            if ($oldExists) { Invoke-Docker -DockerArguments @('rm', "$($env:CONTAINER_NAME)-previous") }
             Write-Host 'LinkFlow deployment succeeded.'
           } catch {
             Write-Error $_
             if (($previousRenamed -or -not $oldExists) -and (Test-ContainerExists $env:CONTAINER_NAME)) {
               & docker logs $env:CONTAINER_NAME 2>&1 | Write-Host
-              Invoke-Docker rm -f $env:CONTAINER_NAME
+              Invoke-Docker -DockerArguments @('rm', '-f', $env:CONTAINER_NAME)
             }
             if ($oldExists) {
               if ($previousRenamed) {
                 Restore-PreviousContainer
               } elseif (Test-ContainerExists $env:CONTAINER_NAME) {
-                Invoke-Docker start $env:CONTAINER_NAME
+                Invoke-Docker -DockerArguments @('start', $env:CONTAINER_NAME)
               }
             }
             throw
