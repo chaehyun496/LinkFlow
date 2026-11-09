@@ -3,3 +3,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 urls.db
+*.sqlite
+*.sqlite3
+*.log
+actions-runner/
+_work/
+data/

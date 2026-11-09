@@ -65,3 +65,152 @@ jobs:
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/linkflow:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy LinkFlow on Windows runner
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Windows, X64]
+    env:
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/linkflow:latest
+      CONTAINER_NAME: linkflow
+      DATA_DIR: C:\LinkFlow\data
+      HOST_PORT: '8000'
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Verify Docker and port availability
+        run: |
+          $ErrorActionPreference = 'Stop'
+          docker version
+          if ($LASTEXITCODE -ne 0) { throw "Docker version check failed with exit code $LASTEXITCODE." }
+          $portInUse = Get-NetTCPConnection -LocalPort ([int]$env:HOST_PORT) -State Listen -ErrorAction SilentlyContinue
+          if ($portInUse) {
+            $owners = $portInUse | Select-Object -ExpandProperty OwningProcess -Unique
+            $containerOnPort = docker ps --filter "publish=$($env:HOST_PORT)" --format '{{.Names}}'
+            if ($containerOnPort -and ($containerOnPort -contains $env:CONTAINER_NAME)) {
+              Write-Host "Port $($env:HOST_PORT) is currently owned by the LinkFlow container; it will be replaced."
+            } else {
+              throw "Port $($env:HOST_PORT) is already in use by another process/container. Owners: $($owners -join ', ')"
+            }
+          }
+
+      - name: Log in to Docker Hub
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:DOCKERHUB_TOKEN | docker login --username $env:DOCKERHUB_USERNAME --password-stdin
+          if ($LASTEXITCODE -ne 0) { throw "Docker Hub login failed with exit code $LASTEXITCODE." }
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Pull latest image
+        run: |
+          docker pull $env:IMAGE
+          if ($LASTEXITCODE -ne 0) { throw "Docker image pull failed with exit code $LASTEXITCODE." }
+
+      - name: Replace LinkFlow container with rollback on failure
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Invoke-Docker {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & docker @Arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "Docker command failed with exit code $LASTEXITCODE: docker $($Arguments -join ' ')"
+            }
+          }
+
+          function Test-ContainerExists {
+            param([string]$Name)
+            & docker inspect $Name *> $null
+            return ($LASTEXITCODE -eq 0)
+          }
+
+          function Restore-PreviousContainer {
+            if (Test-ContainerExists "$($env:CONTAINER_NAME)-previous") {
+              if (Test-ContainerExists $env:CONTAINER_NAME) {
+                Invoke-Docker rm -f $env:CONTAINER_NAME
+              }
+              Invoke-Docker rename "$($env:CONTAINER_NAME)-previous" $env:CONTAINER_NAME
+              Invoke-Docker start $env:CONTAINER_NAME
+              Write-Host 'Previous LinkFlow container restored.'
+            }
+          }
+
+          New-Item -ItemType Directory -Force -Path $env:DATA_DIR | Out-Null
+          $dbFile = Join-Path $env:DATA_DIR 'urls.db'
+
+          if (Test-ContainerExists "$($env:CONTAINER_NAME)-previous") {
+            throw "Refusing deployment because $($env:CONTAINER_NAME)-previous already exists. Remove or inspect it manually before retrying; no container was changed."
+          }
+
+          $oldExists = Test-ContainerExists $env:CONTAINER_NAME
+          if ($oldExists) {
+            $oldImage = (& docker inspect --format '{{.Config.Image}}' $env:CONTAINER_NAME)
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($oldImage)) {
+              throw 'Could not read the existing LinkFlow container image; no container was changed.'
+            }
+
+            try {
+              Invoke-Docker stop $env:CONTAINER_NAME
+              if (-not (Test-Path -LiteralPath $dbFile)) {
+                Invoke-Docker cp "$($env:CONTAINER_NAME):/app/urls.db" $dbFile
+              }
+            } catch {
+              if (Test-ContainerExists $env:CONTAINER_NAME) {
+                Invoke-Docker start $env:CONTAINER_NAME
+              }
+              throw
+            }
+          }
+          if (-not (Test-Path -LiteralPath $dbFile)) {
+            New-Item -ItemType File -Path $dbFile | Out-Null
+          }
+
+          $previousRenamed = $false
+          try {
+            if ($oldExists) {
+              Invoke-Docker rename $env:CONTAINER_NAME "$($env:CONTAINER_NAME)-previous"
+              $previousRenamed = $true
+            }
+
+            Invoke-Docker run -d --name $env:CONTAINER_NAME --restart unless-stopped -p "$($env:HOST_PORT):8000" -v "$($dbFile):/app/urls.db" $env:IMAGE
+            $healthy = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              try {
+                $response = Invoke-WebRequest -Uri "http://127.0.0.1:$($env:HOST_PORT)/" -UseBasicParsing -TimeoutSec 3
+                if ($response.StatusCode -eq 200) { $healthy = $true; break }
+              } catch { }
+              Start-Sleep -Seconds 2
+            }
+            if (-not $healthy) { throw 'LinkFlow did not respond with HTTP 200 within 60 seconds.' }
+
+            if ($oldExists) { Invoke-Docker rm "$($env:CONTAINER_NAME)-previous" }
+            Write-Host 'LinkFlow deployment succeeded.'
+          } catch {
+            Write-Error $_
+            if (($previousRenamed -or -not $oldExists) -and (Test-ContainerExists $env:CONTAINER_NAME)) {
+              & docker logs $env:CONTAINER_NAME 2>&1 | Write-Host
+              Invoke-Docker rm -f $env:CONTAINER_NAME
+            }
+            if ($oldExists) {
+              if ($previousRenamed) {
+                Restore-PreviousContainer
+              } elseif (Test-ContainerExists $env:CONTAINER_NAME) {
+                Invoke-Docker start $env:CONTAINER_NAME
+              }
+            }
+            throw
+          }
+
+      - name: Verify deployed service
+        run: |
+          $response = Invoke-WebRequest -Uri "http://127.0.0.1:$($env:HOST_PORT)/" -UseBasicParsing
+          if ($response.StatusCode -ne 200) { throw "Unexpected HTTP status: $($response.StatusCode)" }
+          Write-Host "LinkFlow is reachable at http://127.0.0.1:$($env:HOST_PORT)/"
+
+      - name: Log out from Docker Hub
+        if: always()
+        run: docker logout
