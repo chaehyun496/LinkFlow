@@ -122,8 +122,11 @@ jobs:
 
           function Test-ContainerExists {
             param([string]$Name)
-            & docker inspect $Name *> $null
-            return ($LASTEXITCODE -eq 0)
+            $containerNames = @(& docker ps -a --format '{{.Names}}' 2>$null)
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not list Docker containers while checking '$Name' (exit code $LASTEXITCODE)."
+            }
+            return ($containerNames -contains $Name)
           }
 
           function Restore-PreviousContainer {
@@ -146,7 +149,7 @@ jobs:
 
           $oldExists = Test-ContainerExists $env:CONTAINER_NAME
           if ($oldExists) {
-            $oldImage = (& docker inspect --format '{{.Config.Image}}' $env:CONTAINER_NAME)
+            $oldImage = (& docker inspect --format '{{.Config.Image}}' $env:CONTAINER_NAME 2>$null)
             if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($oldImage)) {
               throw 'Could not read the existing LinkFlow container image; no container was changed.'
             }
