@@ -26,7 +26,7 @@ def test_empty_url_is_rejected_with_message(tmp_path, monkeypatch):
     with TestClient(app) as client:
         response = client.post("/api/urls", json={"url": "   "})
         assert response.status_code == 422
-        assert response.json()["detail"] == "URL을 입력해주세요."
+        assert response.json()["detail"] == "URL\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694."
 
 
 def test_url_without_http_scheme_is_rejected_with_message(tmp_path, monkeypatch):
@@ -34,4 +34,4 @@ def test_url_without_http_scheme_is_rejected_with_message(tmp_path, monkeypatch)
     with TestClient(app) as client:
         response = client.post("/api/urls", json={"url": "example.com"})
         assert response.status_code == 422
-        assert response.json()["detail"] == "http:// 또는 https://로 시작하는 URL을 입력해주세요."
+        assert response.json()["detail"] == "http:// \uB610\uB294 https://\uB85C \uC2DC\uC791\uD558\uB294 URL\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694."

@@ -3,8 +3,8 @@ const list = document.querySelector('#url-list');
 const result = document.querySelector('#result');
 const message = document.querySelector('#message');
 
-const EMPTY_URL_MESSAGE = 'URL을 입력해주세요.';
-const URL_PREFIX_MESSAGE = 'http:// 또는 https://로 시작하는 URL을 입력해주세요.';
+const EMPTY_URL_MESSAGE = 'URL\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694.';
+const URL_PREFIX_MESSAGE = 'http:// \uB610\uB294 https://\uB85C \uC2DC\uC791\uD558\uB294 URL\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694.';
 
 async function loadUrls() {
   const response = await fetch('/api/urls');
@@ -17,7 +17,7 @@ form.addEventListener('submit', async (event) => {
   message.textContent = '';
   result.classList.add('hidden');
 
-  const url = form.url.value.trim();
+  const url = document.querySelector('#url').value.trim();
   if (!url) {
     message.textContent = EMPTY_URL_MESSAGE;
     return;
@@ -34,10 +34,10 @@ form.addEventListener('submit', async (event) => {
   });
   const data = await response.json();
   if (!response.ok) {
-    message.textContent = data.detail || 'URL 생성에 실패했습니다.';
+    message.textContent = data.detail || 'URL \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.';
     return;
   }
-  result.innerHTML = `생성 완료: <a href="/${data.code}">${data.short_url}</a>`;
+  result.innerHTML = `\uC0DD\uC131 \uC644\uB8CC: <a href="/${data.code}">${data.short_url}</a>`;
   result.classList.remove('hidden');
   form.reset();
   loadUrls();

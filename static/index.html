@@ -10,7 +10,7 @@
   <main class="container">
     <section class="hero"><p class="eyebrow">LINKLITE</p><h1>긴 링크를 짧고 똑똑하게.</h1><p>URL을 줄이고, 클릭 흐름을 한눈에 확인하세요.</p></section>
     <section class="card">
-      <form id="url-form"><label for="url">단축할 URL</label><div class="form-row"><input id="url" name="url" type="url" placeholder="https://example.com/very/long/url" required /><button>단축하기</button></div><p id="message" class="message"></p></form>
+      <form id="url-form" novalidate><label for="url">단축할 URL</label><div class="form-row"><input id="url" name="url" type="url" inputmode="url" placeholder="https://example.com/very/long/url" required /><button>단축하기</button></div><p id="message" class="message"></p></form>
       <div id="result" class="result hidden"></div>
     </section>
     <section class="card"><div class="section-heading"><div><p class="eyebrow">ANALYTICS</p><h2>최근 단축 URL</h2></div><button id="refresh" class="secondary">새로고침</button></div><div class="table-wrap"><table><thead><tr><th>단축 URL</th><th>원본 URL</th><th>클릭</th><th>생성일</th></tr></thead><tbody id="url-list"><tr><td colspan="4">아직 생성된 URL이 없습니다.</td></tr></tbody></table></div></section>
