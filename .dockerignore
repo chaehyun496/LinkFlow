@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+upload
+__pycache__
+*.py[cod]
+.pytest_cache
+*.log
+urls.db
+*.sqlite
+*.sqlite3
+2024105496_이채현_HW2.docx
+2024105496_이채현_HW2.pdf
+2024105496_이채현_HW2.zip
+Dockerfile
+.dockerignore
