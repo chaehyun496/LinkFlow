@@ -96,14 +96,12 @@ jobs:
             }
           }
 
-      - name: Log in to Docker Hub
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $env:DOCKERHUB_TOKEN | docker login --username $env:DOCKERHUB_USERNAME --password-stdin
-          if ($LASTEXITCODE -ne 0) { throw "Docker Hub login failed with exit code $LASTEXITCODE." }
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub on Windows runner
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Pull latest image
         run: |
